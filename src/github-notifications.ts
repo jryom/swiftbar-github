@@ -1,5 +1,3 @@
-#!/usr/bin/env node
-
 import { execFile } from "node:child_process";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
@@ -14,8 +12,22 @@ type Notification = Awaited<
 	>
 >["data"][number];
 
-type Item = { url: string; repository: string; title: string };
-type InboxItem = Item & { key: string; id: string; reason: string };
+type Item = {
+	url: string;
+	repository: string;
+	title: string;
+	key: string;
+	group: string;
+	alertTitle: string;
+	label: string;
+};
+type Section = {
+	title: string;
+	empty: string;
+	action: string;
+	state: string;
+	items: Item[];
+};
 const exec = promisify(execFile);
 const notifier = new nodeNotifier.NotificationCenter({ withFallback: false });
 const inbox = "https://github.com/notifications";
@@ -27,8 +39,8 @@ const cache =
 		".cache/swiftbar",
 		basename(launcher || "github-notifications.3m.sh"),
 	);
-const icon = Buffer.from(
-	'<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24"><path d="M12 .5C5.65.5.5 5.65.5 12c0 5.08 3.29 9.39 7.86 10.91.58.11.79-.25.79-.56v-2.14c-3.2.7-3.88-1.36-3.88-1.36-.52-1.33-1.28-1.68-1.28-1.68-1.04-.71.08-.7.08-.7 1.15.08 1.75 1.18 1.75 1.18 1.02 1.75 2.69 1.24 3.34.95.1-.74.4-1.24.73-1.53-2.55-.29-5.23-1.28-5.23-5.69 0-1.25.45-2.28 1.18-3.08-.12-.29-.51-1.46.11-3.04 0 0 .96-.31 3.16 1.18a11 11 0 0 1 5.75 0c2.2-1.49 3.16-1.18 3.16-1.18.62 1.58.23 2.75.11 3.04.73.8 1.18 1.83 1.18 3.08 0 4.42-2.69 5.4-5.25 5.68.41.36.78 1.06.78 2.14v3.17c0 .31.21.67.79.56A11.5 11.5 0 0 0 23.5 12C23.5 5.65 18.35.5 12 .5z"/></svg>',
+const icon = (
+	await readFile(new URL("../assets/github.svg", import.meta.url))
 ).toString("base64");
 
 function text(value: unknown) {
@@ -92,15 +104,15 @@ async function save(file: string, values: string[]) {
 	}
 }
 
-function notify(title: string, item: Item, group: string) {
+function notify(item: Item) {
 	return new Promise<boolean>((resolve) => {
 		const notification = {
-			title,
+			title: item.alertTitle,
 			subtitle: item.repository,
 			message: item.title,
 			open: item.url,
 			sound: "default",
-			group,
+			group: item.group,
 			timeout: false as const,
 		};
 		notifier.notify(notification, (error) => resolve(!error));
@@ -145,11 +157,21 @@ async function fetchActivity(argument?: string) {
 			return response.data;
 		},
 	);
-	const reviews = requested.map((item) => ({
-		url: item.html_url,
-		repository: new URL(item.repository_url).pathname.slice("/repos/".length),
-		title: `#${item.number} ${text(item.title)}`,
-	}));
+	const reviews = requested.map((item) => {
+		const repository = new URL(item.repository_url).pathname.slice(
+			"/repos/".length,
+		);
+		const title = `#${item.number} ${text(item.title)}`;
+		return {
+			url: item.html_url,
+			repository,
+			title,
+			key: item.html_url,
+			group: `github-review-${item.html_url}`,
+			alertTitle: "Review requested",
+			label: `${repository} ${title}`,
+		};
+	});
 	if (argument === "open-reviews") return { reviews, notifications: [] };
 	const reviewURLs = new Set(reviews.map((item) => item.url));
 	const unread = await github.paginate(
@@ -165,77 +187,58 @@ async function fetchActivity(argument?: string) {
 		.filter(
 			(item) => item.reason !== "review_requested" || !reviewURLs.has(item.url),
 		)
-		.map((item) => ({
-			key: `${item.id}:${item.updated_at}`,
-			id: item.id,
-			repository: text(item.repository.full_name),
-			reason: text(item.reason).replaceAll("_", " "),
-			title: text(item.subject.title),
-			url: item.url,
-		}));
+		.map((item) => {
+			const repository = text(item.repository.full_name);
+			const reason = text(item.reason).replaceAll("_", " ");
+			const title = text(item.subject.title);
+			return {
+				key: `${item.id}:${item.updated_at}`,
+				repository,
+				title,
+				url: item.url,
+				group: `github-notification-${item.id}`,
+				alertTitle: `GitHub: ${reason}`,
+				label: `${repository} [${reason}]: ${title}`,
+			};
+		});
 	return { reviews, notifications };
 }
 
-function renderMenu(reviews: Item[], notifications: InboxItem[]) {
-	const total = reviews.length + notifications.length;
+function renderMenu(sections: Section[]) {
+	const total = sections.reduce(
+		(count, section) => count + section.items.length,
+		0,
+	);
 	if (!total) return "";
 
-	const menu = [`${total} | templateImage=${icon}`, "---"];
-	menu.push(`Review requests (${reviews.length}) | color=gray`);
-	if (reviews.length) {
-		for (const item of reviews)
-			menu.push(`${item.repository} ${item.title} | href=${item.url}`);
-		menu.push(action("Open all review requests", "open-reviews"));
-	} else {
-		menu.push("No reviews requested | color=gray");
-	}
-	menu.push("---", `Notifications (${notifications.length}) | color=gray`);
-	if (notifications.length) {
-		for (const item of notifications)
+	const menu = [`${total} | templateImage=${icon}`];
+	for (const section of sections) {
+		menu.push("---", `${section.title} (${section.items.length}) | color=gray`);
+		if (section.items.length) {
+			for (const item of section.items)
+				menu.push(`${item.label} | href=${item.url}`);
 			menu.push(
-				`${item.repository} [${item.reason}]: ${item.title} | href=${item.url}`,
+				action(`Open all ${section.title.toLowerCase()}`, section.action),
 			);
-		menu.push(action("Open all notifications", "open-notifications"));
-	} else {
-		menu.push("No unread notifications | color=gray");
+		} else menu.push(`${section.empty} | color=gray`);
 	}
 	return menu.join("\n");
 }
 
-async function deliverAlerts(reviews: Item[], notifications: InboxItem[]) {
-	const reviewFile = join(cache, "requested-prs");
-	const notificationFile = join(cache, "inbox-notifications");
-	const [previousReviews, previousNotifications] = await Promise.all([
-		state(reviewFile),
-		state(notificationFile),
-	]);
+async function deliverAlerts(sections: Section[]) {
 	await mkdir(cache, { recursive: true });
-	const reviewState = [];
-	for (const item of reviews) {
-		if (!previousReviews || previousReviews.has(item.url)) {
-			reviewState.push(item.url);
-			continue;
+	const previous = await Promise.all(
+		sections.map((section) => state(join(cache, section.state))),
+	);
+	for (const [index, section] of sections.entries()) {
+		const seen = previous[index];
+		const current = [];
+		for (const item of section.items) {
+			if (!seen || seen.has(item.key) || (await notify(item)))
+				current.push(item.key);
 		}
-		if (await notify("Review requested", item, `github-review-${item.url}`))
-			reviewState.push(item.url);
+		await save(join(cache, section.state), current);
 	}
-	const notificationState = [];
-	for (const item of notifications) {
-		if (!previousNotifications || previousNotifications.has(item.key)) {
-			notificationState.push(item.key);
-			continue;
-		}
-		if (
-			await notify(
-				`GitHub: ${item.reason}`,
-				item,
-				`github-notification-${item.id}`,
-			)
-		)
-			notificationState.push(item.key);
-	}
-	await save(reviewFile, reviewState);
-	await save(notificationFile, notificationState);
 }
 
 async function main() {
@@ -243,14 +246,31 @@ async function main() {
 	if (argument && !["open-reviews", "open-notifications"].includes(argument))
 		throw new Error("Usage: github-notifications-swiftbar");
 	const { reviews, notifications } = await fetchActivity(argument);
+	const sections = [
+		{
+			title: "Review requests",
+			empty: "No reviews requested",
+			action: "open-reviews",
+			state: "requested-prs",
+			items: reviews,
+		},
+		{
+			title: "Notifications",
+			empty: "No unread notifications",
+			action: "open-notifications",
+			state: "inbox-notifications",
+			items: notifications,
+		},
+	];
 	if (argument) {
-		const items = argument === "open-reviews" ? reviews : notifications;
+		const items =
+			sections.find((section) => section.action === argument)?.items || [];
 		for (const item of items) await exec("/usr/bin/open", ["-g", item.url]);
 		return;
 	}
 
-	const menu = renderMenu(reviews, notifications);
-	await deliverAlerts(reviews, notifications);
+	const menu = renderMenu(sections);
+	await deliverAlerts(sections);
 	if (menu) console.log(menu);
 }
 
