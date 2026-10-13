@@ -1,7 +1,5 @@
 #!/bin/bash
 
-export SWIFTBAR_PLUGIN_PATH="${SWIFTBAR_PLUGIN_PATH:-$0}"
-
 if output=$(npx --yes github-notifications-swiftbar@latest "$@" 2>/dev/null); then
   [[ -z "$output" ]] || printf '%s\n' "$output"
 elif [[ $# -eq 0 ]]; then

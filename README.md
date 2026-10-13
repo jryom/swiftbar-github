@@ -16,7 +16,6 @@ Save this as `github-notifications.3m.sh` in your SwiftBar plugin folder:
 
 ```bash
 #!/bin/bash
-export SWIFTBAR_PLUGIN_PATH="${SWIFTBAR_PLUGIN_PATH:-$0}"
 npx --yes github-notifications-swiftbar@latest "$@"
 ```
 
