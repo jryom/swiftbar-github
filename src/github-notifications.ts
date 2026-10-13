@@ -5,30 +5,17 @@ import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
 import { homedir } from "node:os";
 import { basename, join } from "node:path";
 import { promisify } from "node:util";
+import { Octokit } from "@octokit/rest";
 import nodeNotifier from "node-notifier";
 
-type Review = {
-	html_url: string;
-	repository_url: string;
-	number: number;
-	title: string;
-};
-
-type Notification = {
-	id: string;
-	updated_at: string;
-	reason: string;
-	repository: { full_name: string; html_url: string };
-	subject: { type: string; title: string; url: string | null };
-};
+type Notification = Awaited<
+	ReturnType<
+		Octokit["rest"]["activity"]["listNotificationsForAuthenticatedUser"]
+	>
+>["data"][number];
 
 type Item = { url: string; repository: string; title: string };
 type InboxItem = Item & { key: string; id: string; reason: string };
-type Search<T> = {
-	items: T[];
-	incomplete_results: boolean;
-	total_count: number;
-};
 const exec = promisify(execFile);
 const notifier = new nodeNotifier.NotificationCenter({ withFallback: false });
 const inbox = "https://github.com/notifications";
@@ -66,62 +53,6 @@ async function token() {
 			throw new Error("GitHub CLI (gh) is not installed.");
 	}
 	throw new Error("Sign in with gh auth login --hostname github.com.");
-}
-
-async function request<T>(url: string, auth: string) {
-	if (new URL(url).origin !== "https://api.github.com")
-		throw new Error("GitHub returned an invalid pagination URL.");
-	const response = await fetch(url, {
-		headers: {
-			Authorization: `Bearer ${auth}`,
-			Accept: "application/vnd.github+json",
-			"X-GitHub-Api-Version": "2022-11-28",
-			"User-Agent": "github-notifications-swiftbar",
-		},
-		redirect: "error",
-		signal: AbortSignal.timeout(20000),
-	});
-	if (!response.ok) {
-		if (response.status === 401)
-			throw new Error(
-				"GitHub authentication expired. Sign in again with gh auth login.",
-			);
-		throw new Error(
-			`GitHub request failed (HTTP ${response.status}). Check token permissions and rate limits.`,
-		);
-	}
-	return {
-		data: (await response.json()) as T,
-		links: response.headers.get("link"),
-	};
-}
-
-function nextPage(links: string | null) {
-	return links
-		?.split(",")
-		.find((link) => /rel="next"/.test(link))
-		?.match(/<([^>]+)>/)?.[1];
-}
-
-async function pages<T>(path: string, auth: string, search = false) {
-	const items: T[] = [];
-	let url: string | undefined = new URL(path, "https://api.github.com").href;
-	while (url) {
-		const { data, links } = await request<T[] | Search<T>>(url, auth);
-		const result = search ? (data as Search<T>) : null;
-		if (result?.incomplete_results)
-			throw new Error("GitHub returned incomplete review search results.");
-		if (result && result.total_count > 1000)
-			throw new Error(
-				"More than 1,000 review requests matched. GitHub search cannot return all of them.",
-			);
-		const batch = result ? result.items : data;
-		if (!Array.isArray(batch))
-			throw new Error("GitHub returned invalid response data.");
-		items.push(...batch);
-		url = nextPage(links);
-	}
-	return items;
 }
 
 function webURL(notification: Notification) {
@@ -182,17 +113,38 @@ function action(label: string, argument: string) {
 }
 
 async function fetchActivity(argument?: string) {
-	const auth = await token();
-	const { data: user } = await request<{ login: string }>(
-		"https://api.github.com/user",
-		auth,
-	);
-	const login = text(user.login);
-	const query = new URLSearchParams({
-		q: `is:pr is:open archived:false review-requested:${login}`,
-		per_page: "100",
+	const github = new Octokit({
+		auth: await token(),
+		userAgent: "github-notifications-swiftbar",
+		request: {
+			redirect: "error",
+			fetch: (url: RequestInfo | URL, options?: RequestInit) =>
+				fetch(url, {
+					...options,
+					signal: options?.signal
+						? AbortSignal.any([options.signal, AbortSignal.timeout(20000)])
+						: AbortSignal.timeout(20000),
+				}),
+		},
+		log: { debug() {}, info() {}, warn() {}, error() {} },
 	});
-	const requested = await pages<Review>(`/search/issues?${query}`, auth, true);
+	const { data: user } = await github.rest.users.getAuthenticated();
+	const requested = await github.paginate(
+		github.rest.search.issuesAndPullRequests,
+		{
+			q: `is:pr is:open archived:false review-requested:${user.login}`,
+			per_page: 100,
+		},
+		(response) => {
+			if (response.data.incomplete_results)
+				throw new Error("GitHub returned incomplete review search results.");
+			if (response.data.total_count > 1000)
+				throw new Error(
+					"More than 1,000 review requests matched. GitHub search cannot return all of them.",
+				);
+			return response.data;
+		},
+	);
 	const reviews = requested.map((item) => ({
 		url: item.html_url,
 		repository: new URL(item.repository_url).pathname.slice("/repos/".length),
@@ -200,9 +152,13 @@ async function fetchActivity(argument?: string) {
 	}));
 	if (argument === "open-reviews") return { reviews, notifications: [] };
 	const reviewURLs = new Set(reviews.map((item) => item.url));
-	const unread = await pages<Notification>(
-		"/notifications?all=false&participating=false&per_page=50",
-		auth,
+	const unread = await github.paginate(
+		github.rest.activity.listNotificationsForAuthenticatedUser,
+		{
+			all: false,
+			participating: false,
+			per_page: 50,
+		},
 	);
 	const notifications = unread
 		.map((item) => ({ ...item, url: webURL(item) }))
@@ -301,10 +257,20 @@ async function main() {
 try {
 	await main();
 } catch (error) {
+	const status =
+		error instanceof Error &&
+		"status" in error &&
+		typeof error.status === "number"
+			? error.status
+			: null;
 	const message =
-		error instanceof Error
-			? error.message
-			: "Could not retrieve GitHub notifications.";
+		status === 401
+			? "GitHub authentication expired. Sign in again with gh auth login."
+			: status
+				? `GitHub request failed (HTTP ${status}). Check token permissions and rate limits.`
+				: error instanceof Error
+					? error.message
+					: "Could not retrieve GitHub notifications.";
 	if (process.argv[2]) {
 		console.error(message);
 		process.exitCode = 1;
