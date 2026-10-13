@@ -1,0 +1,38 @@
+{
+	"name": "github-notifications-swiftbar",
+	"version": "1.0.0",
+	"description": "GitHub notifications and review requests in the macOS menu bar",
+	"type": "module",
+	"bin": {
+		"github-notifications-swiftbar": "dist/github-notifications.js"
+	},
+	"engines": {
+		"node": "^22.22.2 || ^24.15.0 || >=26.0.0"
+	},
+	"files": [
+		"dist/"
+	],
+	"scripts": {
+		"build": "tsc",
+		"format": "biome format --write .",
+		"prepack": "pnpm build"
+	},
+	"repository": {
+		"type": "git",
+		"url": "git+https://github.com/jryom/github-notifications-swiftbar.git"
+	},
+	"license": "MIT",
+	"dependencies": {
+		"node-notifier": "^11.0.0"
+	},
+	"publishConfig": {
+		"access": "public",
+		"registry": "https://registry.npmjs.org/"
+	},
+	"devDependencies": {
+		"@biomejs/biome": "^2.5.15",
+		"@types/node": "^26.6.5",
+		"@types/node-notifier": "^8.0.5",
+		"typescript": "^7.0.2"
+	}
+}
