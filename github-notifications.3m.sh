@@ -1,6 +1,5 @@
 #!/bin/bash
 
-export PATH="$PATH:$HOME/.local/share/mise/shims:/opt/homebrew/bin:/usr/local/bin"
 export SWIFTBAR_PLUGIN_PATH="${SWIFTBAR_PLUGIN_PATH:-$0}"
 
 if output=$(npx --yes github-notifications-swiftbar@latest "$@" 2>/dev/null); then

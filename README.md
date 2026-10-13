@@ -4,7 +4,7 @@ A macOS menu bar plugin for unread GitHub notifications and pending review reque
 
 ## Setup
 
-Install SwiftBar, Node.js 24.15 or newer (24.x), and GitHub CLI. Sign in to GitHub from Terminal:
+Install SwiftBar, Node.js 24.15 or newer (24.x), and GitHub CLI. `node`, `npx`, and `gh` must be on SwiftBar's `PATH`, not just your terminal's. The plugin does not configure `PATH`. Sign in to GitHub from Terminal:
 
 ```sh
 brew install --cask swiftbar
@@ -16,7 +16,6 @@ Save this as `github-notifications.3m.sh` in your SwiftBar plugin folder:
 
 ```bash
 #!/bin/bash
-export PATH="$PATH:$HOME/.local/share/mise/shims:/opt/homebrew/bin:/usr/local/bin"
 export SWIFTBAR_PLUGIN_PATH="${SWIFTBAR_PLUGIN_PATH:-$0}"
 npx --yes github-notifications-swiftbar@latest "$@"
 ```
