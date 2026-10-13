@@ -7,8 +7,6 @@ import { basename, join } from "node:path";
 import { promisify } from "node:util";
 import nodeNotifier from "node-notifier";
 
-const exec = promisify(execFile);
-
 type Review = {
 	html_url: string;
 	repository_url: string;
@@ -26,11 +24,12 @@ type Notification = {
 
 type Item = { url: string; repository: string; title: string };
 type InboxItem = Item & { key: string; id: string; reason: string };
-type Search = {
-	items: Review[];
+type Search<T> = {
+	items: T[];
 	incomplete_results: boolean;
 	total_count: number;
 };
+const exec = promisify(execFile);
 const notifier = new nodeNotifier.NotificationCenter({ withFallback: false });
 const inbox = "https://github.com/notifications";
 const launcher = process.env.SWIFTBAR_PLUGIN_PATH;
@@ -58,9 +57,7 @@ async function token() {
 		const { stdout } = await exec(
 			"gh",
 			["auth", "token", "--hostname", "github.com"],
-			{
-				timeout: 10000,
-			},
+			{ timeout: 10000 },
 		);
 		if (stdout.trim()) return stdout.trim();
 	} catch (error) {
@@ -110,8 +107,8 @@ async function pages<T>(path: string, auth: string, search = false) {
 	const items: T[] = [];
 	let url: string | undefined = new URL(path, "https://api.github.com").href;
 	while (url) {
-		const { data, links } = await request<T[] | Search>(url, auth);
-		const result = search ? (data as Search) : null;
+		const { data, links } = await request<T[] | Search<T>>(url, auth);
+		const result = search ? (data as Search<T>) : null;
 		if (result?.incomplete_results)
 			throw new Error("GitHub returned incomplete review search results.");
 		if (result && result.total_count > 1000)
@@ -121,7 +118,7 @@ async function pages<T>(path: string, auth: string, search = false) {
 		const batch = result ? result.items : data;
 		if (!Array.isArray(batch))
 			throw new Error("GitHub returned invalid response data.");
-		items.push(...(batch as T[]));
+		items.push(...batch);
 		url = nextPage(links);
 	}
 	return items;
@@ -290,13 +287,9 @@ async function main() {
 	if (argument && !["open-reviews", "open-notifications"].includes(argument))
 		throw new Error("Usage: github-notifications-swiftbar");
 	const { reviews, notifications } = await fetchActivity(argument);
-	if (argument === "open-reviews") {
-		for (const item of reviews) await exec("/usr/bin/open", ["-g", item.url]);
-		return;
-	}
-	if (argument === "open-notifications") {
-		for (const item of notifications)
-			await exec("/usr/bin/open", ["-g", item.url]);
+	if (argument) {
+		const items = argument === "open-reviews" ? reviews : notifications;
+		for (const item of items) await exec("/usr/bin/open", ["-g", item.url]);
 		return;
 	}
 
