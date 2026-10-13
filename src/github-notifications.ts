@@ -19,14 +19,7 @@ type Item = {
 	key: string;
 	group: string;
 	alertTitle: string;
-	label: string;
-};
-type Section = {
-	title: string;
-	empty: string;
-	action: string;
-	state: string;
-	items: Item[];
+	reason?: string;
 };
 const exec = promisify(execFile);
 const notifier = new nodeNotifier.NotificationCenter({ withFallback: false });
@@ -169,7 +162,6 @@ async function fetchActivity(argument?: string) {
 			key: item.html_url,
 			group: `github-review-${item.html_url}`,
 			alertTitle: "Review requested",
-			label: `${repository} ${title}`,
 		};
 	});
 	if (argument === "open-reviews") return { reviews, notifications: [] };
@@ -198,47 +190,47 @@ async function fetchActivity(argument?: string) {
 				url: item.url,
 				group: `github-notification-${item.id}`,
 				alertTitle: `GitHub: ${reason}`,
-				label: `${repository} [${reason}]: ${title}`,
+				reason,
 			};
 		});
 	return { reviews, notifications };
 }
 
-function renderMenu(sections: Section[]) {
-	const total = sections.reduce(
-		(count, section) => count + section.items.length,
-		0,
-	);
+function renderMenu(reviews: Item[], notifications: Item[]) {
+	const total = reviews.length + notifications.length;
 	if (!total) return "";
 
-	const menu = [`${total} | templateImage=${icon}`];
-	for (const section of sections) {
-		menu.push("---", `${section.title} (${section.items.length}) | color=gray`);
-		if (section.items.length) {
-			for (const item of section.items)
-				menu.push(`${item.label} | href=${item.url}`);
+	const menu = [
+		`${total} | templateImage=${icon}`,
+		"---",
+		`Review requests (${reviews.length}) | color=gray`,
+	];
+	if (reviews.length) {
+		for (const item of reviews)
+			menu.push(`${item.repository} ${item.title} | href=${item.url}`);
+		menu.push(action("Open all review requests", "open-reviews"));
+	} else menu.push("No reviews requested | color=gray");
+	menu.push("---", `Notifications (${notifications.length}) | color=gray`);
+	if (notifications.length) {
+		for (const item of notifications)
 			menu.push(
-				action(`Open all ${section.title.toLowerCase()}`, section.action),
+				`${item.repository} [${item.reason}]: ${item.title} | href=${item.url}`,
 			);
-		} else menu.push(`${section.empty} | color=gray`);
-	}
+		menu.push(action("Open all notifications", "open-notifications"));
+	} else menu.push("No unread notifications | color=gray");
 	return menu.join("\n");
 }
 
-async function deliverAlerts(sections: Section[]) {
+async function deliverAlerts(file: string, items: Item[]) {
 	await mkdir(cache, { recursive: true });
-	const previous = await Promise.all(
-		sections.map((section) => state(join(cache, section.state))),
-	);
-	for (const [index, section] of sections.entries()) {
-		const seen = previous[index];
-		const current = [];
-		for (const item of section.items) {
-			if (!seen || seen.has(item.key) || (await notify(item)))
-				current.push(item.key);
-		}
-		await save(join(cache, section.state), current);
+	const path = join(cache, file);
+	const seen = await state(path);
+	const current = [];
+	for (const item of items) {
+		if (!seen || seen.has(item.key) || (await notify(item)))
+			current.push(item.key);
 	}
+	await save(path, current);
 }
 
 async function main() {
@@ -246,31 +238,15 @@ async function main() {
 	if (argument && !["open-reviews", "open-notifications"].includes(argument))
 		throw new Error("Usage: github-notifications-swiftbar");
 	const { reviews, notifications } = await fetchActivity(argument);
-	const sections = [
-		{
-			title: "Review requests",
-			empty: "No reviews requested",
-			action: "open-reviews",
-			state: "requested-prs",
-			items: reviews,
-		},
-		{
-			title: "Notifications",
-			empty: "No unread notifications",
-			action: "open-notifications",
-			state: "inbox-notifications",
-			items: notifications,
-		},
-	];
 	if (argument) {
-		const items =
-			sections.find((section) => section.action === argument)?.items || [];
+		const items = argument === "open-reviews" ? reviews : notifications;
 		for (const item of items) await exec("/usr/bin/open", ["-g", item.url]);
 		return;
 	}
 
-	const menu = renderMenu(sections);
-	await deliverAlerts(sections);
+	const menu = renderMenu(reviews, notifications);
+	await deliverAlerts("requested-prs", reviews);
+	await deliverAlerts("inbox-notifications", notifications);
 	if (menu) console.log(menu);
 }
 
