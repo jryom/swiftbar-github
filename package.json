@@ -1,6 +1,6 @@
 {
 	"name": "swiftbar-github",
-	"version": "1.1.0",
+	"version": "1.1.1",
 	"description": "GitHub notifications and review requests in the macOS menu bar",
 	"license": "MIT",
 	"repository": "github:jryom/swiftbar-github",
@@ -27,7 +27,6 @@
 	"devDependencies": {
 		"@biomejs/biome": "^2.5.15",
 		"@types/node": "^26.6.5",
-		"@types/node-notifier": "^8.0.5",
 		"typescript": "^7.0.2"
 	}
 }

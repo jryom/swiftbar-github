@@ -16,6 +16,6 @@ Download [swiftbar-github.3m.sh](https://cdn.jsdelivr.net/npm/swiftbar-github@la
 
 Run `chmod +x swiftbar-github.3m.sh`. Updates resolve through `@latest` on each refresh; downloaded versions are cached. For authentication without `gh`, set `GH_TOKEN` or `GITHUB_TOKEN` in SwiftBar's environment.
 
-Allow notifications for the bundled terminal-notifier in macOS System Settings. Click entries to open them on GitHub.
+Allow notifications for terminal-notifier in macOS System Settings. Click entries or desktop notifications to open them on GitHub; desktop notification clicks are available for five minutes.
 
 Use **Mark as read** to clear unread threads by type or reason. This does not complete pending review requests. Option-click the menu to access SwiftBar's hidden controls.

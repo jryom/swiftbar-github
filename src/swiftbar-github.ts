@@ -1,10 +1,10 @@
-import { execFile } from "node:child_process";
+import { execFile, spawn } from "node:child_process";
 import { mkdir, readFile, rename, rm, writeFile } from "node:fs/promises";
+import { createRequire } from "node:module";
 import { homedir } from "node:os";
-import { basename, join } from "node:path";
+import { basename, dirname, join } from "node:path";
 import { promisify } from "node:util";
 import { Octokit } from "@octokit/rest";
-import nodeNotifier from "node-notifier";
 
 type Notification = Awaited<
 	ReturnType<
@@ -17,12 +17,14 @@ type Item = {
 	repository: string;
 	title: string;
 	key: string;
-	group: string;
 	alertTitle: string;
 	reason?: string;
 };
 const exec = promisify(execFile);
-const notifier = new nodeNotifier.NotificationCenter({ withFallback: false });
+const notifier = join(
+	dirname(createRequire(import.meta.url).resolve("node-notifier")),
+	"vendor/mac.noindex/terminal-notifier.app/Contents/MacOS/terminal-notifier",
+);
 const inbox = "https://github.com/notifications";
 const launcher = process.env.SWIFTBAR_PLUGIN_PATH;
 const cache =
@@ -99,16 +101,32 @@ async function save(file: string, values: string[]) {
 
 function notify(item: Item) {
 	return new Promise<boolean>((resolve) => {
-		const notification = {
-			title: item.alertTitle,
-			subtitle: item.repository,
-			message: item.title,
-			open: item.url,
-			sound: "default",
-			group: item.group,
-			timeout: false as const,
-		};
-		notifier.notify(notification, (error) => resolve(!error));
+		const child = spawn(
+			notifier,
+			[
+				"-title",
+				item.alertTitle,
+				"-subtitle",
+				item.repository,
+				"-message",
+				item.title,
+				"-open",
+				item.url,
+				"-group",
+				`github-${item.url}`,
+				"-sound",
+				"default",
+				"-timeout",
+				"300",
+			],
+			{ detached: true, stdio: "ignore" },
+		);
+		child.once("error", () => resolve(false));
+		child.once("spawn", () => {
+			// Record the handoff, not the eventual click or timeout.
+			child.unref();
+			resolve(true);
+		});
 	});
 }
 
@@ -165,7 +183,6 @@ async function fetchActivity(argument?: string) {
 			repository,
 			title,
 			key: item.html_url,
-			group: `github-review-${item.html_url}`,
 			alertTitle: "Review requested",
 		};
 	});
@@ -194,7 +211,6 @@ async function fetchActivity(argument?: string) {
 				repository,
 				title,
 				url: item.url,
-				group: `github-notification-${item.id}`,
 				alertTitle: `GitHub: ${reason}`,
 				reason,
 			};
