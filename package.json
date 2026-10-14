@@ -1,6 +1,6 @@
 {
 	"name": "swiftbar-github",
-	"version": "1.0.0",
+	"version": "1.0.1",
 	"description": "GitHub notifications and review requests in the macOS menu bar",
 	"license": "MIT",
 	"repository": "github:jryom/swiftbar-github",
