@@ -112,13 +112,14 @@ function notify(item: Item) {
 	});
 }
 
-function action(label: string, argument: string) {
+function action(label: string, args: string[], refresh = false) {
 	if (!launcher) return `${label} | href=${inbox}`;
-	return `${label} | bash="${launcher.replaceAll('"', '\\"')}" param1=${argument} terminal=false`;
+	const params = args.map((arg, index) => `param${index + 1}=${arg}`).join(" ");
+	return `${label} | bash="${launcher.replaceAll('"', '\\"')}" ${params} terminal=false${refresh ? " refresh=true" : ""}`;
 }
 
-async function fetchActivity(argument?: string) {
-	const github = new Octokit({
+async function client() {
+	return new Octokit({
 		auth: await token(),
 		userAgent: "swiftbar-github",
 		request: {
@@ -133,6 +134,10 @@ async function fetchActivity(argument?: string) {
 		},
 		log: { debug() {}, info() {}, warn() {}, error() {} },
 	});
+}
+
+async function fetchActivity(argument?: string) {
+	const github = await client();
 	const { data: user } = await github.rest.users.getAuthenticated();
 	const requested = await github.paginate(
 		github.rest.search.issuesAndPullRequests,
@@ -164,7 +169,8 @@ async function fetchActivity(argument?: string) {
 			alertTitle: "Review requested",
 		};
 	});
-	if (argument === "open-reviews") return { reviews, notifications: [] };
+	if (argument === "open-reviews")
+		return { reviews, notifications: [], unread: [] };
 	const reviewURLs = new Set(reviews.map((item) => item.url));
 	const unread = await github.paginate(
 		github.rest.activity.listNotificationsForAuthenticatedUser,
@@ -193,22 +199,26 @@ async function fetchActivity(argument?: string) {
 				reason,
 			};
 		});
-	return { reviews, notifications };
+	return { reviews, notifications, unread };
 }
 
-function renderMenu(reviews: Item[], notifications: Item[]) {
+function renderMenu(
+	reviews: Item[],
+	notifications: Item[],
+	unread: Notification[],
+) {
 	const total = reviews.length + notifications.length;
 	if (!total) return "";
 
 	const menu = [
-		`${total} | templateImage=${icon}`,
+		`${process.env.SWIFTBAR_GITHUB_DEV ? "Dev " : ""}${total} | templateImage=${icon}`,
 		"---",
 		`Review requests (${reviews.length}) | color=gray`,
 	];
 	if (reviews.length) {
 		for (const item of reviews)
 			menu.push(`${item.repository} ${item.title} | href=${item.url}`);
-		menu.push(action("Open all review requests", "open-reviews"));
+		menu.push(action("Open all review requests", ["open-reviews"]));
 	} else menu.push("No reviews requested | color=gray");
 	menu.push("---", `Notifications (${notifications.length}) | color=gray`);
 	if (notifications.length) {
@@ -216,37 +226,104 @@ function renderMenu(reviews: Item[], notifications: Item[]) {
 			menu.push(
 				`${item.repository} [${item.reason}]: ${item.title} | href=${item.url}`,
 			);
-		menu.push(action("Open all notifications", "open-notifications"));
+		menu.push(action("Open all notifications", ["open-notifications"]));
 	} else menu.push("No unread notifications | color=gray");
+	if (unread.length) {
+		const types: Record<string, string> = {
+			PullRequest: "Pull requests",
+			Issue: "Issues",
+			Discussion: "Discussions",
+			Commit: "Commits",
+			Release: "Releases",
+		};
+		menu.push("---", "Mark as read");
+		menu.push(
+			`--${action(`All notifications (${unread.length})`, ["mark-read", unread.map((item) => item.id).join(",")], true)}`,
+		);
+		for (const [heading, labelFor] of [
+			[
+				"By type",
+				(item: Notification) =>
+					text(types[item.subject.type] || item.subject.type),
+			],
+			[
+				"By reason",
+				(item: Notification) => text(item.reason).replaceAll("_", " "),
+			],
+		] as const) {
+			const groups = new Map<string, string[]>();
+			for (const item of unread) {
+				const label = labelFor(item);
+				const ids = groups.get(label) || [];
+				ids.push(item.id);
+				groups.set(label, ids);
+			}
+			menu.push("-----", `--${heading} | color=gray`);
+			for (const [label, ids] of [...groups].sort(([a], [b]) =>
+				a.localeCompare(b),
+			))
+				menu.push(
+					`--${action(`${label} (${ids.length})`, ["mark-read", ids.join(",")], true)}`,
+				);
+		}
+	}
 	return menu.join("\n");
 }
 
-async function deliverAlerts(file: string, items: Item[]) {
+async function deliverAlerts(
+	file: string,
+	items: Item[],
+	represented: string[] = [],
+) {
 	await mkdir(cache, { recursive: true });
 	const path = join(cache, file);
 	const seen = await state(path);
-	const current = [];
+	const current = new Set(represented);
 	for (const item of items) {
+		if (current.has(item.key)) continue;
 		if (!seen || seen.has(item.key) || (await notify(item)))
-			current.push(item.key);
+			current.add(item.key);
 	}
-	await save(path, current);
+	await save(path, [...current]);
 }
 
 async function main() {
 	const argument = process.argv[2];
-	if (argument && !["open-reviews", "open-notifications"].includes(argument))
+	if (
+		argument &&
+		!["open-reviews", "open-notifications", "mark-read"].includes(argument)
+	)
 		throw new Error("Usage: swiftbar-github");
-	const { reviews, notifications } = await fetchActivity(argument);
+	if (argument === "mark-read") {
+		const ids = (process.argv[3] || "").split(",").map(Number);
+		if (ids.some((id) => !Number.isSafeInteger(id) || id <= 0))
+			throw new Error("Usage: swiftbar-github mark-read <thread-ids>");
+		const github = await client();
+		for (const id of ids)
+			await github.rest.activity.markThreadAsRead({ thread_id: id });
+		return;
+	}
+	const { reviews, notifications, unread } = await fetchActivity(argument);
 	if (argument) {
 		const items = argument === "open-reviews" ? reviews : notifications;
 		for (const item of items) await exec("/usr/bin/open", ["-g", item.url]);
 		return;
 	}
 
-	const menu = renderMenu(reviews, notifications);
+	const menu = renderMenu(reviews, notifications, unread);
+	const previousReviews = await state(join(cache, "requested-prs"));
+	const reviewURLs = new Set([
+		...reviews.map((item) => item.url),
+		...(previousReviews || []),
+	]);
+	const represented = unread
+		.filter(
+			(item) =>
+				item.reason === "review_requested" && reviewURLs.has(webURL(item)),
+		)
+		.map((item) => `${item.id}:${item.updated_at}`);
 	await deliverAlerts("requested-prs", reviews);
-	await deliverAlerts("inbox-notifications", notifications);
+	await deliverAlerts("inbox-notifications", notifications, represented);
 	if (menu) console.log(menu);
 }
 
