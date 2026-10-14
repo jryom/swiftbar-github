@@ -1,2 +1,2 @@
 #!/usr/bin/env node
-import "../dist/github-notifications.js";
+import "../dist/swiftbar-github.js";

@@ -1,9 +1,9 @@
 {
-	"name": "github-notifications-swiftbar",
+	"name": "swiftbar-github",
 	"version": "1.0.0",
 	"description": "GitHub notifications and review requests in the macOS menu bar",
 	"license": "MIT",
-	"repository": "github:jryom/github-notifications-swiftbar",
+	"repository": "github:jryom/swiftbar-github",
 	"type": "module",
 	"bin": "bin/cli.js",
 	"engines": {
@@ -13,7 +13,7 @@
 		"bin",
 		"dist",
 		"assets",
-		"github-notifications.3m.sh"
+		"swiftbar-github.3m.sh"
 	],
 	"scripts": {
 		"build": "tsc",

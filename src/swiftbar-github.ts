@@ -30,7 +30,7 @@ const cache =
 	join(
 		homedir(),
 		".cache/swiftbar",
-		basename(launcher || "github-notifications.3m.sh"),
+		basename(launcher || "swiftbar-github.3m.sh"),
 	);
 const icon = (
 	await readFile(new URL("../assets/github.svg", import.meta.url))
@@ -120,7 +120,7 @@ function action(label: string, argument: string) {
 async function fetchActivity(argument?: string) {
 	const github = new Octokit({
 		auth: await token(),
-		userAgent: "github-notifications-swiftbar",
+		userAgent: "swiftbar-github",
 		request: {
 			redirect: "error",
 			fetch: (url: RequestInfo | URL, options?: RequestInit) =>
@@ -236,7 +236,7 @@ async function deliverAlerts(file: string, items: Item[]) {
 async function main() {
 	const argument = process.argv[2];
 	if (argument && !["open-reviews", "open-notifications"].includes(argument))
-		throw new Error("Usage: github-notifications-swiftbar");
+		throw new Error("Usage: swiftbar-github");
 	const { reviews, notifications } = await fetchActivity(argument);
 	if (argument) {
 		const items = argument === "open-reviews" ? reviews : notifications;
