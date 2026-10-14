@@ -12,20 +12,7 @@ brew install gh
 gh auth login --hostname github.com
 ```
 
-Save this as `github-notifications.3m.sh` in your SwiftBar plugin folder:
-
-```bash
-#!/bin/bash
-
-if output=$(npx --yes github-notifications-swiftbar@latest "$@" 2>/dev/null); then
-  [[ -z "$output" ]] || printf '%s\n' "$output"
-elif [[ $# -eq 0 ]]; then
-  printf '%s\n' 'GitHub unavailable | color=red' '---' 'Could not start the plugin.'
-else
-  echo 'Could not start the plugin.' >&2
-  exit 1
-fi
-```
+Download [github-notifications.3m.sh](https://cdn.jsdelivr.net/npm/github-notifications-swiftbar@latest/github-notifications.3m.sh) into your SwiftBar plugin folder.
 
 Run `chmod +x github-notifications.3m.sh`. Updates resolve through `@latest` on each refresh; downloaded versions are cached. For authentication without `gh`, set `GH_TOKEN` or `GITHUB_TOKEN` in SwiftBar's environment.
 

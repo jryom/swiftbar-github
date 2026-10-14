@@ -12,7 +12,8 @@
 	"files": [
 		"bin",
 		"dist",
-		"assets"
+		"assets",
+		"github-notifications.3m.sh"
 	],
 	"scripts": {
 		"build": "tsc",
