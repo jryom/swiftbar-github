@@ -4,18 +4,35 @@ A macOS menu bar plugin for unread GitHub notifications and pending review reque
 
 ## Setup
 
-Requires macOS, SwiftBar, and Node.js 24.15+ (24.x). `node` and `npx` must be on SwiftBar's `PATH`. To reuse your GitHub CLI login, `gh` must be there too:
+Requires macOS, SwiftBar, `gh`, `jq`, and `terminal-notifier`. No Node.js, npm, or build step. The launcher adds mise shims and standard Homebrew locations to `PATH`.
 
 ```sh
 brew install --cask swiftbar
-brew install gh
+brew install gh jq terminal-notifier
 gh auth login --hostname github.com
 ```
 
-Download [swiftbar-github.3m.sh](https://cdn.jsdelivr.net/npm/swiftbar-github@latest/swiftbar-github.3m.sh) into your SwiftBar plugin folder.
+In your SwiftBar plugin folder:
 
-Run `chmod +x swiftbar-github.3m.sh`. Updates resolve through `@latest` on each refresh; downloaded versions are cached. For authentication without `gh`, set `GH_TOKEN` or `GITHUB_TOKEN` in SwiftBar's environment.
+```sh
+curl -fsSL https://raw.githubusercontent.com/jryom/swiftbar-github/main/swiftbar-github.3m.sh -o swiftbar-github.3m.sh
+chmod +x swiftbar-github.3m.sh
+```
 
-Allow notifications for terminal-notifier in macOS System Settings. Click entries or desktop notifications to open them on GitHub; desktop notification clicks are available for five minutes.
+The launcher downloads `plugin.sh` from a version tag and checks for updates daily. A failed download leaves the last working version in place. For token-based authentication, set `GH_TOKEN` or `GITHUB_TOKEN` in SwiftBar's environment.
+
+Allow notifications for terminal-notifier in macOS System Settings. Click entries or desktop notifications to open them on GitHub.
 
 Use **Mark as read** to clear unread threads by type or reason. This does not complete pending review requests. Option-click the menu to access SwiftBar's hidden controls.
+
+Enable **Auto-open new review requests in background** in the plugin menu to open newly requested reviews in your default browser without bringing it forward. It is off by default and remembers your choice. Existing requests and the first run do not open tabs; desktop alerts still appear for new activity. Browser behavior may vary.
+
+## Local development
+
+Symlink `swiftbar-github-dev.3m.sh` from this checkout into your SwiftBar plugin folder. Edit `plugin.sh` and refresh SwiftBar; no build or publishing needed. Keep production disabled while testing to avoid duplicate alerts.
+
+Run `bash tests/run.sh` for tests and shellcheck (install shellcheck for development). GitHub calls, notifications, and browser opens are mocked.
+
+## Releases
+
+Push a stable version tag such as `v2.0.0` to release the committed `plugin.sh`. No npm publishing or release artifacts are needed. Do not move existing version tags.
