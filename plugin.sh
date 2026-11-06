@@ -181,15 +181,15 @@ prefix=''
 [[ -z ${SWIFTBAR_GITHUB_DEV:-} ]] || prefix='Dev '
 printf '%s%s | templateImage=%s\n---\nReview requests (%s) | color=gray\n' "$prefix" "$total" "$icon" "$review_count"
 if [[ $review_count -gt 0 ]]; then
-  jq -r '.[] | "\(.repository) \(.title) | href=\(.url)"' "$work/reviews"
-  action 'Open all review requests' false open-reviews
+  jq -r '.[] | "\(.repository) \(.title) | href=\(.url) refresh=true"' "$work/reviews"
+  action 'Open all review requests' true open-reviews
 else
   printf 'No reviews requested | color=gray\n'
 fi
 printf '%s\n' '---' "Notifications ($notification_count) | color=gray"
 if [[ $notification_count -gt 0 ]]; then
-  jq -r '.[] | "\(.repository) [\(.reason)]: \(.title) | href=\(.url)"' "$work/notifications"
-  action 'Open all notifications' false open-notifications
+  jq -r '.[] | "\(.repository) [\(.reason)]: \(.title) | href=\(.url) refresh=true"' "$work/notifications"
+  action 'Open all notifications' true open-notifications
 else
   printf 'No unread notifications | color=gray\n'
 fi

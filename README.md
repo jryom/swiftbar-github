@@ -21,7 +21,7 @@ chmod +x swiftbar-github.3m.sh
 
 The launcher downloads `plugin.sh` from a version tag and checks for updates daily. A failed download leaves the last working version in place. For token-based authentication, set `GH_TOKEN` or `GITHUB_TOKEN` in SwiftBar's environment.
 
-Allow notifications for terminal-notifier in macOS System Settings. Click entries or desktop notifications to open them on GitHub.
+Allow notifications for terminal-notifier in macOS System Settings. Click entries or desktop notifications to open them on GitHub. Menu links and actions refresh the plugin immediately.
 
 Use **Mark as read** to clear unread threads by type or reason. This does not complete pending review requests. Option-click the menu to access SwiftBar's hidden controls.
 

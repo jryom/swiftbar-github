@@ -60,6 +60,8 @@ reviews '[1]'
 run
 [[ ! -s "$EVENTS" ]]
 contains 'in background: Off' "$temp/menu"
+contains 'href=https://github.com/example/repo/pull/1 refresh=true' "$temp/menu"
+contains 'param1=open-reviews terminal=false refresh=true' "$temp/menu"
 contains 'bash="/plugins/GitHub reviews.3m.sh" param1=toggle-auto-open terminal=false refresh=true' "$temp/menu"
 run toggle-auto-open
 [[ ! -s "$EVENTS" && ! -s "$temp/menu" ]]
@@ -108,6 +110,8 @@ notifications '[
 EXPECTED_ALERTS=1 run
 contains 'Notifications (1)' "$temp/menu"
 contains 'example/repo [mention]: Title with controls | href=https://github.com/example/repo/issues/9' "$temp/menu"
+contains 'href=https://github.com/example/repo/issues/9 refresh=true' "$temp/menu"
+contains 'param1=open-notifications terminal=false refresh=true' "$temp/menu"
 contains 'param1=mark-read param2=10,11' "$temp/menu"
 contains '--Pull requests (1)' "$temp/menu"
 contains '--review requested (1)' "$temp/menu"
